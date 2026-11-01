@@ -10,6 +10,7 @@ from .auth import ApiAuth
 from .auto_schema import SchemaMixin, create_schema
 from .errors import ApiError, ValidationErrorResponse, format_error_response
 from .mixin import ApiMixin
+from .plugins import PluginRegistry, default_registry
 from .utils import normalize_action
 
 
@@ -30,6 +31,7 @@ class Api:
         self.data_envelope_key = self.envelope_key
         self.items_key = items_key
         self.auth: Optional[ApiAuth] = None
+        self.plugins = PluginRegistry()
         self.resources: Dict[str, ApiMixin] = {}
 
         if app_or_blueprint is not None:
@@ -37,6 +39,65 @@ class Api:
 
     def init_app(self, app_or_blueprint: Union[Flask, Blueprint]) -> None:
         self.target = app_or_blueprint
+        if hasattr(app_or_blueprint, "extensions"):
+            app_or_blueprint.extensions["build_api"] = self
+
+    def extend(self, *args, **kwargs) -> "Api":
+        """Register capability providers or adapters with the API.
+
+        Examples:
+            api.extend("auth", auth)
+            api.extend("storage", storage)
+            api.extend("tasks", celery_adapter)
+            api.extend("payment", paystack_adapter)
+            api.extend("catalog", fb_catalog_adapter)
+            api.extend(auth=auth, storage=storage, tasks=celery)
+            api.extend(CeleryAdapter())
+        """
+        # Form 1: api.extend("name", provider)
+        if len(args) == 2 and isinstance(args[0], str):
+            self._register_plugin(args[0], args[1])
+
+        # Form 2: api.extend(AdapterInstance()) -> auto infer name from class
+        elif len(args) == 1 and not kwargs:
+            provider = args[0]
+            name = getattr(provider, "name", None) or getattr(provider, "plugin_name", None)
+            if not name:
+                cls_name = provider.__class__.__name__.lower()
+                for suffix in ["adapter", "plugin", "extension", "service"]:
+                    if cls_name.endswith(suffix) and len(cls_name) > len(suffix):
+                        cls_name = cls_name[:-len(suffix)]
+                        break
+                name = cls_name
+            self._register_plugin(name, provider)
+
+        # Form 3: api.extend(auth=auth, storage=storage, ...)
+        for k, v in kwargs.items():
+            self._register_plugin(k, v)
+
+        return self
+
+    def _register_plugin(self, name: str, provider: Any) -> None:
+        name_clean = name.lower().strip()
+        self.plugins.register(name_clean, provider)
+        default_registry.register(name_clean, provider)
+
+        # Built-in direct attributes on Api instance
+        if name_clean == "auth":
+            self.configure_auth(provider)
+        elif name_clean == "storage":
+            self.storage = provider
+        elif name_clean in ("tasks", "celery"):
+            self.tasks = provider
+        elif name_clean == "catalog":
+            self.catalog = provider
+        elif name_clean == "payment":
+            self.payment = provider
+        else:
+            setattr(self, name_clean, provider)
+
+    def get_plugin(self, name: str) -> Optional[Any]:
+        return self.plugins.get(name) or default_registry.get(name)
 
     def configure_auth(self, auth_instance: Any) -> None:
         """Attach authentication manager (ApiAuth or flask-user-auth)."""

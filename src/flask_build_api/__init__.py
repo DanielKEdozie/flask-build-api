@@ -23,6 +23,16 @@ from .idempotency import (
     RedisIdempotencyStore,
 )
 from .mixin import ApiMixin
+from .plugins import (
+    PluginProxy,
+    PluginRegistry,
+    auth,
+    catalog,
+    get_plugin,
+    payment,
+    storage,
+    tasks,
+)
 from .schema import SchemaResolver
 from .utils import ACTION_ALIASES, CANONICAL_ACTIONS, cast_identifier, normalize_action
 
@@ -46,7 +56,15 @@ __all__ = [
     "UnauthorizedError",
     "ValidationErrorResponse",
     "action",
+    "auth",
+    "catalog",
+    "payment",
     "route",
+    "storage",
+    "tasks",
+    "get_plugin",
+    "PluginProxy",
+    "PluginRegistry",
     "cast_identifier",
     "create_schema",
     "fields",
