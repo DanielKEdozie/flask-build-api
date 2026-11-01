@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flask-build-api"
+version = "0.1.0"
+description = "Declarative CRUD REST API builder for Flask with SQLAlchemy, Marshmallow, and OpenAPI"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Daniel Edozie" },
+]
+classifiers = [
+    "Framework :: Flask",
+    "Programming Language :: Python :: 3",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+dependencies = [
+    "flask>=2.0.0",
+    "marshmallow>=3.0.0",
+]
+
+[project.optional-dependencies]
+sqlalchemy = [
+    "flask-sqlalchemy>=3.0.0",
+    "sqlalchemy>=2.0.0",
+]
+docs = [
+    "apispec>=6.0.0",
+]
+test = [
+    "pytest",
+    "flask-sqlalchemy",
+    "marshmallow-sqlalchemy",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flask_build_api"]
+
