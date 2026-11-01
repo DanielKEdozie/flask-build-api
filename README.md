@@ -135,13 +135,21 @@ OrderSchema = api.create_schema(
 item_api = api.create_resource(model=Item)
 
 # 5d. Self-Referential Recursive Schemas (e.g. Category Trees)
-class CategorySchema(SchemaMixin):
+# Pattern A: Unbounded full-tree recursion (recurses down to database leaves)
+class FullCategorySchema(SchemaMixin):
     model = Category
     fields = ["id", "name", "children"]
-    recurse = ["children"]  # Automatically recurses down children until leaves (children = [])
+    recurse = ["children"]
 
-# Or via factory with recurse=True:
-DynamicCategorySchema = api.create_schema(Category, recurse=True)
+# Pattern B: Bounded depth recursion (stops at exactly N levels)
+class TwoLevelCategorySchema(SchemaMixin):
+    model = Category
+    fields = ["id", "name", "children"]
+    recurse = ["children"]
+    depth = 2  # Recursion cuts off at 2 levels deep!
+
+# Or via factory with integer recurse depth:
+BoundedCategorySchema = api.create_schema(Category, recurse=["children"], depth=2)
 
 app.register_blueprint(api_bp)
 ```

@@ -673,6 +673,14 @@ class TestFlaskBuildApi(unittest.TestCase):
             self.assertEqual(dyn_tree["name"], "Electronics")
             self.assertEqual(dyn_tree["children"][0]["name"], "Computers")
 
+            # Bounded recursion with depth=1 (stops at 1 level, omitting children on Computers)
+            BoundedCatSchema = create_schema(Category, recurse=["children"], depth=1)
+            bounded_tree = BoundedCatSchema().dump(root_c)
+            self.assertEqual(bounded_tree["name"], "Electronics")
+            self.assertEqual(len(bounded_tree["children"]), 1)
+            self.assertEqual(bounded_tree["children"][0]["name"], "Computers")
+            self.assertNotIn("children", bounded_tree["children"][0])
+
     def test_docs_and_openapi(self):
         api = Api(self.app, prefix="/api")
         api.create_resource(model=Product, schema=ProductSchema, name="products")

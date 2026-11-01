@@ -132,6 +132,8 @@ def _generate_schema_fields(
             if isinstance(recurse, bool):
                 # When recurse=True is set, recurse on self-referential collections (like children in trees)
                 rel_recurse = recurse if (is_self_ref and rel.uselist) else False
+            elif isinstance(recurse, int) and not isinstance(recurse, bool):
+                rel_recurse = recurse if (is_self_ref and rel.uselist) else False
             elif isinstance(recurse, (list, tuple, set)):
                 rel_recurse = rel_key in recurse
             elif isinstance(recurse, str):
@@ -149,28 +151,63 @@ def _generate_schema_fields(
         rel_write = rel_cfg.get("write", False)
 
         # Handle self-referential recursive nesting
-        if is_self_ref and rel_recurse and schema_cls is not None:
-            nested_kwargs: Dict[str, Any] = {
-                "many": rel.uselist,
-                "dump_only": not rel_write,
-            }
-            if rel_only:
-                nested_kwargs["only"] = tuple(rel_only)
+        if is_self_ref and rel_recurse:
+            # Check if bounded depth was requested
+            recurse_depth = None
+            if isinstance(rel_recurse, int) and not isinstance(rel_recurse, bool):
+                recurse_depth = rel_recurse
+            elif isinstance(recurse, int) and not isinstance(recurse, bool):
+                recurse_depth = recurse
+            elif rel_cfg.get("depth") is not None and not isinstance(rel_cfg.get("depth"), bool):
+                recurse_depth = rel_cfg.get("depth")
+            elif depth is not None and not isinstance(depth, bool) and depth > 0:
+                recurse_depth = depth
 
-            excludes = list(rel_exclude or [])
-            # Prevent circular loop back to parent only if inverse relation is mapped as a field
-            if rel.back_populates and include_fields is not None and rel.back_populates in include_fields:
-                if rel.back_populates not in excludes and rel.back_populates not in exclude_set:
-                    excludes.append(rel.back_populates)
+            # Bounded recursion: nest down to recurse_depth levels
+            if recurse_depth is not None and recurse_depth > 0:
+                next_depth = recurse_depth - 1
+                nested_schema_cls = create_schema(
+                    model=target_model,
+                    fields=rel_only,
+                    exclude=rel_exclude,
+                    depth=next_depth,
+                    recurse=rel_key if next_depth > 0 else False,
+                    schema_name=f"{model.__name__}_{rel_key.capitalize()}Depth{recurse_depth}AutoSchema",
+                    _visited=visited,
+                )
+                generated_fields[rel_key] = fields.Nested(
+                    nested_schema_cls,
+                    many=rel.uselist,
+                    dump_only=not rel_write,
+                )
+                continue
+            elif recurse_depth == 0:
+                # Reached depth boundary for bounded recursion
+                continue
 
-            if excludes:
-                nested_kwargs["exclude"] = tuple(excludes)
+            # Unbounded natural recursion (depth omitted or 0)
+            if schema_cls is not None:
+                nested_kwargs: Dict[str, Any] = {
+                    "many": rel.uselist,
+                    "dump_only": not rel_write,
+                }
+                if rel_only:
+                    nested_kwargs["only"] = tuple(rel_only)
 
-            generated_fields[rel_key] = fields.Nested(
-                lambda: schema_cls,
-                **nested_kwargs,
-            )
-            continue
+                excludes = list(rel_exclude or [])
+                # Prevent circular loop back to parent only if inverse relation is mapped as a field
+                if rel.back_populates and include_fields is not None and rel.back_populates in include_fields:
+                    if rel.back_populates not in excludes and rel.back_populates not in exclude_set:
+                        excludes.append(rel.back_populates)
+
+                if excludes:
+                    nested_kwargs["exclude"] = tuple(excludes)
+
+                generated_fields[rel_key] = fields.Nested(
+                    lambda: schema_cls,
+                    **nested_kwargs,
+                )
+                continue
 
         rel_depth = rel_cfg.get("depth", depth - 1)
 
