@@ -17,7 +17,11 @@ class ApiAuth:
         if self.backend is not None:
             return self.backend
         try:
-            return current_app.extensions.get("auth") or current_app.extensions.get("user_auth")
+            return (
+                current_app.extensions.get("flask_user_auth")
+                or current_app.extensions.get("auth")
+                or current_app.extensions.get("user_auth")
+            )
         except RuntimeError:
             return None
 
@@ -42,7 +46,10 @@ class ApiAuth:
 
                 # If flask-user-auth is available, delegate to its auth_required
                 if backend and hasattr(backend, "auth_required"):
-                    return backend.auth_required(refresh=refresh)(f)(*args, **kwargs)
+                    try:
+                        return backend.auth_required(refresh=refresh)(f)(*args, **kwargs)
+                    except TypeError:
+                        return backend.auth_required(f)(*args, **kwargs)
 
                 # Fallback / standalone check
                 auth_header = request.headers.get("Authorization", "")

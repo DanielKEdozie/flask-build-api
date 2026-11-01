@@ -534,6 +534,12 @@ class Api:
                     parent_id = kwargs.pop(instance.parent_param)
                     kwargs["parent_id"] = parent_id
 
+                # Auth enforcement if auth_required or action in auth_actions
+                auth_req = instance.auth_required or (instance.auth_actions and instance.auth_actions.get(action_name, False))
+                if auth_req and self.auth:
+                    auth_decorator = self.auth.requires_auth()
+                    return auth_decorator(lambda: handler(*args, **kwargs))()
+
                 return handler(*args, **kwargs)
             except ApiError as err:
                 r_id = req_id or (getattr(instance.ctx, "request_id", None) if instance.ctx else None)
