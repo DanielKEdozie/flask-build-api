@@ -420,6 +420,10 @@ class ApiMixin:
         """Post-commit hook called after record is deleted."""
         pass
 
+    def filter_query(self, query: Any, ctx: Optional[ApiContext] = None) -> Any:
+        """Hook to apply custom query filters or augmentations for collection queries."""
+        return query
+
     # --- CRUD Actions --------------------------------------------------------
 
     def list(self, parent_id: Optional[Any] = None) -> Any:
@@ -431,6 +435,7 @@ class ApiMixin:
         query = apply_filters(query, self.model, self.filter_fields)
         query = apply_search(query, self.model, self.search_fields)
         query = apply_sorting(query, self.model, self.sort_fields, self.default_sort_field)
+        query = self._call_hook("filter_query", query, ctx=ctx)
 
         meta = None
         if self.paginate:
