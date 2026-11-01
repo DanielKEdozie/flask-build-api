@@ -598,7 +598,11 @@ class Api:
                 # Auth enforcement if auth_required or action in auth_actions
                 auth_req = instance.auth_required or (instance.auth_actions and instance.auth_actions.get(action_name, False))
                 if auth_req and self.auth:
-                    auth_decorator = self.auth.requires_auth()
+                    auth_action_setting = instance.auth_actions.get(action_name) if instance.auth_actions else None
+                    if auth_action_setting == "admin":
+                        auth_decorator = self.auth.admin_required()
+                    else:
+                        auth_decorator = self.auth.requires_auth()
                     return auth_decorator(lambda: handler(*args, **kwargs))()
 
                 return handler(*args, **kwargs)

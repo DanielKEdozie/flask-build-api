@@ -37,49 +37,42 @@ class ApiAuth:
             pass
         return None
 
-    def requires_auth(self, refresh: bool = False) -> Callable:
-        """Decorator to require a valid authenticated user (optionally requiring a refresh token)."""
+    def requires_auth(self, refresh: bool = False, admin: bool = False) -> Callable:
+        """Decorator to require a valid authenticated user via token (or session fallback)."""
         def decorator(f: Callable) -> Callable:
             @wraps(f)
             def wrapper(*args, **kwargs):
                 backend = self._resolve_backend()
 
-                # If flask-user-auth is available, delegate to its auth_required
+                # 1. Prefer token_required (strictly enforces Bearer JWT without session)
+                if backend and hasattr(backend, "token_required"):
+                    try:
+                        return backend.token_required(admin=admin)(f)(*args, **kwargs)
+                    except TypeError:
+                        return backend.token_required(f)(*args, **kwargs)
+
+                # 2. If backend has auth_required, delegate with token=True
                 if backend and hasattr(backend, "auth_required"):
                     try:
-                        return backend.auth_required(refresh=refresh)(f)(*args, **kwargs)
+                        return backend.auth_required(token=True, session=False, admin=admin, refresh=refresh)(f)(*args, **kwargs)
                     except TypeError:
-                        return backend.auth_required(f)(*args, **kwargs)
+                        try:
+                            return backend.auth_required(token=True, session=False, admin=admin)(f)(*args, **kwargs)
+                        except TypeError:
+                            return backend.auth_required(f)(*args, **kwargs)
 
-                # Fallback / standalone check
+                # 3. Fallback / standalone token check
                 auth_header = request.headers.get("Authorization", "")
                 if not auth_header:
                     raise UnauthorizedError("Missing Authorization header")
+                if not auth_header.startswith("Bearer "):
+                    raise UnauthorizedError("Invalid token format")
 
                 user = self.get_current_user()
                 if user is None:
-                    # Let backend verify or raise
-                    if not auth_header.startswith("Bearer "):
-                        raise UnauthorizedError("Invalid token format")
+                    raise UnauthorizedError("Invalid or expired token")
 
-                return f(*args, **kwargs)
-
-            return wrapper
-
-        return decorator
-
-    def admin_required(self) -> Callable:
-        """Decorator to require that the authenticated user has administrative privileges."""
-        def decorator(f: Callable) -> Callable:
-            @self.requires_auth()
-            @wraps(f)
-            def wrapper(*args, **kwargs):
-                backend = self._resolve_backend()
-                if backend and hasattr(backend, "admin_required"):
-                    return backend.admin_required()(f)(*args, **kwargs)
-
-                user = self.get_current_user()
-                if not user or not (getattr(user, "is_admin", False) or getattr(user, "is_superuser", False)):
+                if admin and not (getattr(user, "is_admin", False) or getattr(user, "is_superuser", False)):
                     raise ForbiddenError("Administrator privileges required")
 
                 return f(*args, **kwargs)
@@ -87,6 +80,14 @@ class ApiAuth:
             return wrapper
 
         return decorator
+
+    def token_required(self, admin: bool = False) -> Callable:
+        """Require token authentication, optionally enforcing admin privileges."""
+        return self.requires_auth(admin=admin)
+
+    def admin_required(self) -> Callable:
+        """Decorator to require admin privileges via token_required(admin=True)."""
+        return self.requires_auth(admin=True)
 
     def roles_required(self, *roles: str) -> Callable:
         """Decorator to require one or more specific roles."""
