@@ -489,6 +489,11 @@ class ApiMixin:
                 return jsonify(cached_body), cached_status, cached_headers
 
         raw_data = request.get_json(silent=True) or {}
+        if self.is_nested and parent_id is not None and self.parent_pk_field:
+            target_val = getattr(parent, "id", parent_id) if parent else parent_id
+            if self.parent_pk_field not in raw_data:
+                raw_data[self.parent_pk_field] = target_val
+
         raw_data = self._call_hook("before_create_load", raw_data, ctx=ctx)
 
         loaded = self.load(raw_data, action="create")

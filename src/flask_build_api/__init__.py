@@ -1,5 +1,6 @@
 """flask-build-api: Declarative CRUD REST API builder for Flask."""
 
+from marshmallow import fields
 from .auth import ApiAuth
 from .auto_schema import SchemaMixin, create_schema
 from .conditional import generate_etag, match_etag
@@ -48,6 +49,7 @@ __all__ = [
     "route",
     "cast_identifier",
     "create_schema",
+    "fields",
     "format_error_response",
     "generate_etag",
     "match_etag",
