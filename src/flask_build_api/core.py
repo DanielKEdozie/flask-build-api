@@ -105,6 +105,8 @@ class Api:
             self.auth = auth_instance
         else:
             self.auth = ApiAuth(backend=auth_instance)
+        self.plugins.register("auth", auth_instance)
+        default_registry.register("auth", auth_instance)
 
     def create_schema(
         self,
