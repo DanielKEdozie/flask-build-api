@@ -144,6 +144,53 @@ class AuthProxy(PluginProxy):
 
         return None
 
+    def guard(
+        self,
+        target: Optional[Any] = None,
+        *,
+        admin: bool = False,
+        redirect: Optional[str] = "/auth/login",
+        token: Optional[bool] = None,
+        session: Optional[bool] = None,
+    ) -> Any:
+        """Protect a Blueprint or view function with an authentication/authorization guard.
+
+        Usage:
+            # 1. Guard an entire Blueprint (registers before_request hook)
+            auth.guard(admin_bp, admin=True, redirect='/auth/login')
+
+            # 2. Guard as a decorator
+            @auth.guard(admin=True, redirect='/auth/login')
+            def my_view(): ...
+        """
+        def _apply_guard(obj: Any) -> Any:
+            if hasattr(obj, "before_request") and not callable(obj):
+                dec = (
+                    self.admin_required(redirect=redirect)
+                    if admin
+                    else self.auth_required(redirect=redirect, token=token, session=session)
+                )
+                @obj.before_request
+                @dec
+                def _blueprint_auth_guard():
+                    pass
+                return obj
+
+            if callable(obj):
+                dec = (
+                    self.admin_required(redirect=redirect)
+                    if admin
+                    else self.auth_required(redirect=redirect, token=token, session=session)
+                )
+                return dec(obj)
+
+            return obj
+
+        if target is not None:
+            return _apply_guard(target)
+
+        return _apply_guard
+
     def _invoke_decorator(
         self,
         method_name: str,
