@@ -11,6 +11,7 @@ from .auto_schema import SchemaMixin, create_schema
 from .errors import ApiError, ValidationErrorResponse, format_error_response
 from .mixin import ApiMixin
 from .plugins import PluginRegistry, default_registry
+from .token_auth import TokenAuthManager
 from .utils import normalize_action
 
 
@@ -24,6 +25,7 @@ class Api:
         envelope_key: Optional[str] = "data",
         data_envelope_key: Optional[str] = None,
         items_key: str = "items",
+        auth: Optional[Union[Dict[str, Any], Any]] = None,
     ):
         self.target = app_or_blueprint
         self.prefix = prefix.rstrip("/")
@@ -34,6 +36,12 @@ class Api:
         self.plugins = PluginRegistry()
         self.resources: Dict[str, ApiMixin] = {}
 
+        if auth is not None:
+            if isinstance(auth, dict):
+                self.create_auth(**auth)
+            else:
+                self.configure_auth(auth)
+
         if app_or_blueprint is not None:
             self.init_app(app_or_blueprint)
 
@@ -41,6 +49,19 @@ class Api:
         self.target = app_or_blueprint
         if hasattr(app_or_blueprint, "extensions"):
             app_or_blueprint.extensions["build_api"] = self
+        if self.auth and hasattr(self.auth, "backend") and hasattr(self.auth.backend, "mount"):
+            if getattr(self.auth.backend, "auto_mount", True):
+                self.auth.backend.mount(app_or_blueprint)
+        elif self.auth and hasattr(self.auth, "mount") and getattr(self.auth, "auto_mount", True):
+            self.auth.mount(app_or_blueprint)
+
+    def create_auth(self, **kwargs) -> TokenAuthManager:
+        """Create and attach a native TokenAuthManager with HttpOnly cookie refresh."""
+        mgr = TokenAuthManager(**kwargs)
+        self.configure_auth(mgr)
+        if self.target and mgr.auto_mount:
+            mgr.mount(self.target)
+        return mgr
 
     def extend(self, *args, **kwargs) -> "Api":
         """Register capability providers or adapters with the API.

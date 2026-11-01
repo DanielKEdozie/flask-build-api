@@ -34,6 +34,7 @@ from .plugins import (
     tasks,
 )
 from .schema import SchemaResolver
+from .token_auth import TokenAuthManager
 from .utils import ACTION_ALIASES, CANONICAL_ACTIONS, cast_identifier, normalize_action
 
 __version__ = "0.1.0"
@@ -53,6 +54,7 @@ __all__ = [
     "RedisIdempotencyStore",
     "SchemaMixin",
     "SchemaResolver",
+    "TokenAuthManager",
     "UnauthorizedError",
     "ValidationErrorResponse",
     "action",
