@@ -144,6 +144,22 @@ class AuthProxy(PluginProxy):
 
         return None
 
+    def login_user(self, user: Any, remember: bool = False, **kwargs) -> Any:
+        """Log a user in via underlying provider or Flask-Login."""
+        provider = get_plugin("auth")
+        if provider is not None and hasattr(provider, "login_user") and callable(provider.login_user):
+            return provider.login_user(user, remember=remember, **kwargs)
+        from flask_login import login_user as flu_login_user
+        return flu_login_user(user, remember=remember, **kwargs)
+
+    def logout_user(self) -> Any:
+        """Log the current user out via underlying provider or Flask-Login."""
+        provider = get_plugin("auth")
+        if provider is not None and hasattr(provider, "logout_user") and callable(provider.logout_user):
+            return provider.logout_user()
+        from flask_login import logout_user as flu_logout_user
+        return flu_logout_user()
+
     def guard(
         self,
         target: Optional[Any] = None,
