@@ -34,8 +34,9 @@ from .plugins import (
     tasks,
 )
 from .schema import SchemaResolver
+from . import security
 from . import token
-from .token import (
+from .security import (
     TokenUserMixin,
     UserModelMixin,
     admin_required,
@@ -76,6 +77,7 @@ __all__ = [
     "login_required",
     "payment",
     "route",
+    "security",
     "storage",
     "tasks",
     "token",

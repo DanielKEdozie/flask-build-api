@@ -30,6 +30,12 @@ from flask_build_api.token import (
     login_required as namespaced_login_required,
     token_required as namespaced_token_required,
 )
+from flask_build_api.security import (
+    admin_required as security_admin_required,
+    current_user as security_current_user,
+    login_required as security_login_required,
+    token_required as security_token_required,
+)
 
 
 # 1. Setup Flask & Database with UserModelMixin
@@ -107,6 +113,29 @@ def test_proxy_token_view():
 @top_token_required
 def test_top_token_view():
     return {"status": "top_ok", "user": top_current_user.email}
+
+# --- Namespaced flask_build_api.security routes ---
+@app.route("/api/security-token")
+@security_token_required
+def test_security_token_view():
+    return {"status": "security_ok", "user": security_current_user.email}
+
+@app.route("/api/security-admin")
+@security_admin_required
+def test_security_admin_view():
+    return {"status": "security_admin_ok", "user": security_current_user.email}
+
+# --- Bound auth_mgr.security routes ---
+@app.route("/api/bound-mgr-security")
+@auth_mgr.security.token_required
+def test_bound_mgr_security():
+    return {"status": "bound_security_ok", "user": auth_mgr.security.current_user.email}
+
+# --- Bound auth.security proxy routes ---
+@app.route("/api/proxy-security")
+@auth.security.token_required
+def test_proxy_security():
+    return {"status": "proxy_security_ok", "user": auth.security.current_user.email}
 
 
 with app.app_context():
@@ -237,6 +266,29 @@ def test_namespaced_token_auth():
     assert res.status_code == 200
     assert res.get_json()["user"] == "regular@example.com"
     print("[PASS] Top-level exports from flask_build_api verified.")
+
+    # 3.9 Dedicated flask_build_api.security namespace
+    res = client.get("/api/security-token", headers={"Authorization": f"Bearer {reg_token}"})
+    assert res.status_code == 200
+    assert res.get_json()["user"] == "regular@example.com"
+
+    res = client.get("/api/security-admin", headers={"Authorization": f"Bearer {reg_token}"})
+    assert res.status_code == 403
+
+    res = client.get("/api/security-admin", headers={"Authorization": f"Bearer {adm_token}"})
+    assert res.status_code == 200
+    assert res.get_json()["user"] == "admin@example.com"
+    print("[PASS] flask_build_api.security namespace (token_required, admin_required) verified.")
+
+    # 3.10 Bound auth_mgr.security & auth.security
+    res = client.get("/api/bound-mgr-security", headers={"Authorization": f"Bearer {reg_token}"})
+    assert res.status_code == 200
+    assert res.get_json()["user"] == "regular@example.com"
+
+    res = client.get("/api/proxy-security", headers={"Authorization": f"Bearer {reg_token}"})
+    assert res.status_code == 200
+    assert res.get_json()["user"] == "regular@example.com"
+    print("[PASS] Bound auth_mgr.security and auth.security verified.")
 
 
 if __name__ == "__main__":

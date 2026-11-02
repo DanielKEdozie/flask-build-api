@@ -225,12 +225,17 @@ auth = api.create_auth(model=User)
 
 Mounts `/auth/login`, `/auth/refresh`, `/auth/me`, and `/auth/logout` out of the box with HttpOnly cookie rotation.
 
-### 3. Dedicated `token` Namespace
+### 3. Dedicated `security` (or `token`) Namespace
 
-Protect routes using the dedicated `flask_build_api.token` namespace (returning pure JSON 401/403 responses):
+Protect routes using the dedicated `flask_build_api.security` namespace (or its alias `flask_build_api.token`), returning pure JSON 401/403 responses:
 
 ```python
-from flask_build_api.token import token_required, admin_required, login_required, current_user
+from flask_build_api.security import (
+    token_required,
+    admin_required,
+    login_required,
+    current_user,
+)
 
 @app.route("/api/profile")
 @token_required
@@ -243,6 +248,6 @@ def admin_metrics():
     return {"status": "ok"}
 ```
 
-You can also access the namespace on your auth instance as `auth.token.token_required`, `auth.token.current_user`, or top-level from `flask_build_api`.
+You can also access the namespace on your auth instance as `auth.security.token_required`, `auth.token.token_required`, `auth.security.current_user`, or top-level from `flask_build_api`.
 
 

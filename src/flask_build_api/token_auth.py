@@ -570,6 +570,11 @@ class TokenAuthManager:
 
         return _BoundToken(self)
 
+    @property
+    def security(self):
+        """Bound security & token authentication namespace (alias for .token)."""
+        return self.token
+
     # --- Blueprint / App Mounting -------------------------------------------
 
     def init_app(self, app: Flask) -> "TokenAuthManager":

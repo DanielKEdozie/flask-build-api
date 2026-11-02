@@ -125,6 +125,11 @@ class AuthProxy(PluginProxy):
         return _ProxyToken()
 
     @property
+    def security(self):
+        """Bound security namespace (alias for .token)."""
+        return self.token
+
+    @property
     def current_user(self) -> Any:
         """Resolve current authenticated user from g, provider, or Flask-Login."""
         if hasattr(g, "current_user") and g.current_user is not None:
