@@ -88,6 +88,7 @@ class ApiMixin:
     # Authorization & Decorators
     auth_required: bool = False
     auth_actions: Dict[str, Any] = {}
+    error_responses: Dict[Union[int, str], Any] = {}
     decorators: List[Any] = []
     method_decorators: Dict[str, List[Any]] = {}
 

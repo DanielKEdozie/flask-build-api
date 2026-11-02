@@ -9,6 +9,7 @@ def action(
     schema: Optional[Any] = None,
     response_schema: Optional[Any] = None,
     validate_schema: bool = True,
+    error_responses: Optional[Dict[Union[int, str], Any]] = None,
     **kwargs
 ) -> Callable:
     """Decorator to mark a method on an ApiMixin as a custom endpoint.
@@ -33,6 +34,7 @@ def action(
         setattr(func, "_action_schema", schema)
         setattr(func, "_action_response_schema", response_schema)
         setattr(func, "_action_validate_schema", validate_schema)
+        setattr(func, "_action_error_responses", error_responses)
         setattr(func, "_action_kwargs", kwargs)
         return func
 

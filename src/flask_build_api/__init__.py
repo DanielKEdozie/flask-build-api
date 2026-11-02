@@ -7,6 +7,7 @@ from .conditional import generate_etag, match_etag
 from .context import ApiContext
 from .core import Api
 from .decorators import action, route
+from .docs import generate_openapi_spec, mount_swagger_docs
 from .errors import (
     ApiError,
     ForbiddenError,
@@ -16,6 +17,7 @@ from .errors import (
     UnauthorizedError,
     ValidationErrorResponse,
     format_error_response,
+    register_error_handlers,
 )
 from .idempotency import (
     IdempotencyStore,
@@ -90,8 +92,11 @@ __all__ = [
     "fields",
     "format_error_response",
     "generate_etag",
+    "generate_openapi_spec",
     "match_etag",
+    "mount_swagger_docs",
     "normalize_action",
+    "register_error_handlers",
     "ACTION_ALIASES",
     "CANONICAL_ACTIONS",
     "__version__",

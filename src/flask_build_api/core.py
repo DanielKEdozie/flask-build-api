@@ -26,6 +26,10 @@ class Api:
         data_envelope_key: Optional[str] = None,
         items_key: str = "items",
         auth: Optional[Union[Dict[str, Any], Any]] = None,
+        docs: Union[bool, str] = False,
+        docs_url: str = "/docs",
+        docs_title: str = "API Documentation",
+        register_errors: bool = True,
     ):
         self.target = app_or_blueprint
         self.prefix = prefix.rstrip("/")
@@ -35,6 +39,10 @@ class Api:
         self.auth: Optional[ApiAuth] = None
         self.plugins = PluginRegistry()
         self.resources: Dict[str, ApiMixin] = {}
+        self.docs = docs
+        self.docs_url = docs_url
+        self.docs_title = docs_title
+        self.register_errors = register_errors
 
         if auth is not None:
             if isinstance(auth, dict):
@@ -49,11 +57,17 @@ class Api:
         self.target = app_or_blueprint
         if hasattr(app_or_blueprint, "extensions"):
             app_or_blueprint.extensions["build_api"] = self
+        if self.register_errors:
+            from .errors import register_error_handlers
+            register_error_handlers(app_or_blueprint)
         if self.auth and hasattr(self.auth, "backend") and hasattr(self.auth.backend, "mount"):
             if getattr(self.auth.backend, "auto_mount", True):
                 self.auth.backend.mount(app_or_blueprint)
         elif self.auth and hasattr(self.auth, "mount") and getattr(self.auth, "auto_mount", True):
             self.auth.mount(app_or_blueprint)
+        if self.docs:
+            url = self.docs if isinstance(self.docs, str) else self.docs_url
+            self.mount_docs(url_prefix=url, title=self.docs_title)
 
     def create_auth(self, **kwargs) -> TokenAuthManager:
         """Create and attach a native TokenAuthManager with HttpOnly cookie refresh."""

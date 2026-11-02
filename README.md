@@ -250,4 +250,69 @@ def admin_metrics():
 
 You can also access the namespace on your auth instance as `auth.security.token_required`, `auth.token.token_required`, `auth.security.current_user`, or top-level from `flask_build_api`.
 
+---
+
+## Auto OpenAPI / Swagger Docs & Standardized Error Responses
+
+### 1. Zero-Boilerplate OpenAPI 3.0.0 & Swagger UI
+
+Enable interactive API documentation by simply passing `docs=True` (or a custom path like `docs="/api/docs"`) when instantiating `Api`:
+
+```python
+api = Api(app, prefix="/api", docs=True, docs_url="/docs", docs_title="My Store API")
+# Or mount explicitly:
+# api.mount_docs(url_prefix="/docs", title="My Store API")
+```
+
+This mounts:
+* **Interactive Swagger UI**: `GET /docs`
+* **Full OpenAPI 3.0.0 JSON**: `GET /docs/openapi.json`
+
+The documentation automatically includes:
+* All collection, detail, singleton, and nested routes
+* Search fields (`?q=...`), sort fields (`?sort=...`), filter fields, and pagination parameters
+* Request bodies and responses
+* Bearer JWT security tags (`bearerAuth`)
+* Complete `ErrorResponse` schema component and standard HTTP error responses (400, 401, 403, 404, 412, 422, 500)
+
+### 2. Standardized `error_responses` & Custom Declarations
+
+All errors return a predictable JSON payload:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "validation_error",
+    "message": "Validation error",
+    "details": {
+      "email": ["Invalid email address."]
+    },
+    "request_id": "03e48816-43b6-455b-b5cb-0fe4ecaa84b6"
+  },
+  "errors": {
+    "email": ["Invalid email address."]
+  }
+}
+```
+
+You can define custom `error_responses` on your resource class, factory, or `@action`:
+
+```python
+# Resource-level custom errors
+widget_api = api.create_resource(
+    model=Widget,
+    name="widgets",
+    error_responses={409: "Conflict - duplicate widget name"},
+)
+
+# Action-level custom errors
+@action(methods=["POST"], detail=True, url_path="restock", error_responses={429: "Restock rate limit exceeded"})
+def restock(self, instance, data=None):
+    ...
+```
+
+All `ApiError` exceptions (such as `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ValidationErrorResponse`) raised anywhere in your app or custom routes are automatically caught and formatted via `register_error_handlers(app)`.
+
+
 

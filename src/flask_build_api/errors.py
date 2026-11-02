@@ -84,3 +84,36 @@ def format_error_response(
         resp_headers["X-Request-ID"] = request_id
 
     return jsonify(payload), status_code, resp_headers
+
+
+def register_error_handlers(app_or_blueprint: Any) -> None:
+    """Register standardized JSON error handlers on a Flask app or Blueprint."""
+    if not hasattr(app_or_blueprint, "register_error_handler"):
+        return
+
+    def _handle_api_error(err: ApiError):
+        from flask import g
+        r_id = getattr(g, "request_id", None)
+        return format_error_response(
+            message=err.message,
+            code=err.code,
+            details=err.details,
+            status_code=err.status_code,
+            headers=err.headers,
+            request_id=r_id,
+        )
+
+    app_or_blueprint.register_error_handler(ApiError, _handle_api_error)
+
+
+__all__ = [
+    "ApiError",
+    "ForbiddenError",
+    "NotFoundError",
+    "PreconditionFailedError",
+    "RateLimitExceededError",
+    "UnauthorizedError",
+    "ValidationErrorResponse",
+    "format_error_response",
+    "register_error_handlers",
+]
