@@ -109,6 +109,22 @@ class AuthProxy(PluginProxy):
         super().__init__("auth", "Dynamic proxy for authentication provider.")
 
     @property
+    def token(self):
+        """Bound token authentication namespace."""
+        from .token import token_required, admin_required, login_required, current_user
+        class _ProxyToken:
+            @property
+            def current_user(subself):
+                return current_user
+            def token_required(subself, *args, **kwargs):
+                return token_required(*args, **kwargs)
+            def login_required(subself, *args, **kwargs):
+                return login_required(*args, **kwargs)
+            def admin_required(subself, *args, **kwargs):
+                return admin_required(*args, **kwargs)
+        return _ProxyToken()
+
+    @property
     def current_user(self) -> Any:
         """Resolve current authenticated user from g, provider, or Flask-Login."""
         if hasattr(g, "current_user") and g.current_user is not None:

@@ -172,3 +172,77 @@ All hooks use clean, streamlined signatures. Contextual data such as `parent`, `
 | `after_delete` | `(instance, ctx=None)` | Called after record is deleted & committed. |
 | `check_permissions` | `(action, instance=None, ctx=None)` | Enforce authorization rules. Raise `ForbiddenError` if denied. |
 
+---
+
+## Native Token Authentication (`TokenAuthManager` & `flask_build_api.token`)
+
+`flask-build-api` includes built-in JWT + HttpOnly refresh cookie authentication designed for modern single-page apps, mobile clients, and REST APIs.
+
+### 1. `UserModelMixin` / `TokenUserMixin`
+
+Add password hashing, verification, and serialization exclusion to your User model with zero boilerplate:
+
+```python
+from flask_build_api import UserModelMixin
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+import sqlalchemy as sa
+
+class User(Base, UserModelMixin):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(sa.String(120), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    is_admin: Mapped[bool] = mapped_column(sa.Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, default=True)
+
+# Usage:
+user = User(email="jane@example.com")
+user.password = "MySecurePassword"   # Automatically hashed into password_hash
+assert user.check_password("MySecurePassword") is True
+```
+
+### 2. Initializing `TokenAuthManager`
+
+Attach to your Flask app or `Api`:
+
+```python
+from flask_build_api import Api, TokenAuthManager
+
+auth = TokenAuthManager(
+    model=User,
+    identity_field="email",
+    password_field="password_hash",
+    auto_mount=True,
+    url_prefix="/auth",
+)
+auth.init_app(app)
+
+# Or via api factory:
+api = Api(app)
+auth = api.create_auth(model=User)
+```
+
+Mounts `/auth/login`, `/auth/refresh`, `/auth/me`, and `/auth/logout` out of the box with HttpOnly cookie rotation.
+
+### 3. Dedicated `token` Namespace
+
+Protect routes using the dedicated `flask_build_api.token` namespace (returning pure JSON 401/403 responses):
+
+```python
+from flask_build_api.token import token_required, admin_required, login_required, current_user
+
+@app.route("/api/profile")
+@token_required
+def profile():
+    return {"user": current_user.email}
+
+@app.route("/api/admin/metrics")
+@admin_required
+def admin_metrics():
+    return {"status": "ok"}
+```
+
+You can also access the namespace on your auth instance as `auth.token.token_required`, `auth.token.current_user`, or top-level from `flask_build_api`.
+
+

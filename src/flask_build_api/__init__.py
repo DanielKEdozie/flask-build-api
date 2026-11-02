@@ -34,6 +34,15 @@ from .plugins import (
     tasks,
 )
 from .schema import SchemaResolver
+from . import token
+from .token import (
+    TokenUserMixin,
+    UserModelMixin,
+    admin_required,
+    current_user,
+    login_required,
+    token_required,
+)
 from .token_auth import TokenAuthManager
 from .utils import ACTION_ALIASES, CANONICAL_ACTIONS, cast_identifier, normalize_action
 
@@ -55,15 +64,22 @@ __all__ = [
     "SchemaMixin",
     "SchemaResolver",
     "TokenAuthManager",
+    "TokenUserMixin",
+    "UserModelMixin",
     "UnauthorizedError",
     "ValidationErrorResponse",
     "action",
+    "admin_required",
     "auth",
     "catalog",
+    "current_user",
+    "login_required",
     "payment",
     "route",
     "storage",
     "tasks",
+    "token",
+    "token_required",
     "get_plugin",
     "PluginProxy",
     "PluginRegistry",

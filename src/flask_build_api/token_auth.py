@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 import uuid
 
 from flask import Blueprint, Flask, current_app, g, jsonify, make_response, request
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     import jwt
@@ -25,6 +25,106 @@ except ImportError:
     HTTPTokenAuth = None
 
 from .errors import ApiError, ForbiddenError, UnauthorizedError
+
+
+class UserModelMixin:
+    """Declarative user mixin for SQLAlchemy models used with TokenAuthManager.
+
+    Provides:
+    - password setter and set_password() method with automatic hashing
+    - check_password() method for verifying raw passwords
+    - is_active boolean (default True)
+    - is_admin boolean (default False)
+    - __serialize_exclude__ tuple omitting password hashes from API dumps
+    - to_dict() serialization helper
+    """
+    __password_field__: str = "password_hash"
+    __serialize_exclude__: Tuple[str, ...] = ("password", "password_hash")
+
+    @property
+    def password(self) -> str:
+        raise AttributeError("password is a write-only attribute")
+
+    @password.setter
+    def password(self, raw_password: str) -> None:
+        self.set_password(raw_password)
+
+    def set_password(self, raw_password: str) -> None:
+        """Hash and store the password in the configured password field."""
+        if not raw_password:
+            raise ValueError("Password cannot be empty")
+        field = getattr(self, "__password_field__", "password_hash")
+        setattr(self, field, generate_password_hash(raw_password))
+
+    def check_password(self, raw_password: str) -> bool:
+        """Verify password against stored hash."""
+        field = getattr(self, "__password_field__", "password_hash")
+        hashed = getattr(self, field, None)
+        if not hashed:
+            return False
+        return check_password_hash(hashed, raw_password)
+
+    def to_dict(self, include=None, exclude=None) -> Dict[str, Any]:
+        """Convert model instance attributes to a dictionary, omitting excluded fields."""
+        data: Dict[str, Any] = {}
+        excluded = set(self.__serialize_exclude__)
+        if exclude:
+            excluded.update(exclude)
+
+        if hasattr(self, "__table__") and hasattr(self.__table__, "columns"):
+            for col in self.__table__.columns:
+                if col.name not in excluded:
+                    data[col.name] = getattr(self, col.name, None)
+        else:
+            for key, val in vars(self).items():
+                if not key.startswith("_") and key not in excluded:
+                    data[key] = val
+
+        if include:
+            for field in include:
+                if hasattr(self, field):
+                    data[field] = getattr(self, field)
+
+        return data
+
+
+#: Shorthand alias for UserModelMixin
+TokenUserMixin = UserModelMixin
+
+
+def get_token_auth_manager(app=None) -> Optional["TokenAuthManager"]:
+    """Resolve the active TokenAuthManager instance from the current app or plugin registry."""
+    app_obj = app or current_app
+    try:
+        if app_obj and hasattr(app_obj, "extensions"):
+            mgr = (
+                app_obj.extensions.get("token_auth")
+                or app_obj.extensions.get("auth")
+            )
+            if isinstance(mgr, TokenAuthManager):
+                return mgr
+
+            # Check build_api extension
+            api_ext = app_obj.extensions.get("build_api")
+            if api_ext is not None:
+                if hasattr(api_ext, "auth") and isinstance(api_ext.auth, TokenAuthManager):
+                    return api_ext.auth
+                if hasattr(api_ext, "get_plugin"):
+                    p = api_ext.get_plugin("auth")
+                    if isinstance(p, TokenAuthManager):
+                        return p
+    except (RuntimeError, AttributeError):
+        pass
+
+    try:
+        from .plugins import get_plugin
+        p = get_plugin("auth")
+        if isinstance(p, TokenAuthManager):
+            return p
+    except Exception:
+        pass
+
+    return None
 
 
 class TokenAuthManager:
@@ -384,7 +484,7 @@ class TokenAuthManager:
 
     def token_required(self, *args, admin: bool = False, **kwargs) -> Callable:
         """Decorator enforcing Bearer token authentication."""
-        direct_fn = args[0] if (len(args) == 1 and callable(args[0]) and not kwargs and not admin) else None
+        direct_fn = args[0] if (len(args) == 1 and callable(args[0]) and not kwargs) else None
 
         def decorator(f: Callable) -> Callable:
             @wraps(f)
@@ -448,10 +548,45 @@ class TokenAuthManager:
     def admin_required(self, *args, **kwargs) -> Callable:
         return self.token_required(*args, admin=True, **kwargs)
 
+    @property
+    def token(self):
+        """Bound token authentication namespace."""
+        class _BoundToken:
+            def __init__(subself, mgr):
+                subself.mgr = mgr
+
+            @property
+            def current_user(subself):
+                return subself.mgr.current_user
+
+            def token_required(subself, *args, admin: bool = False, **kwargs):
+                return subself.mgr.token_required(*args, admin=admin, **kwargs)
+
+            def login_required(subself, *args, admin: bool = False, **kwargs):
+                return subself.mgr.login_required(*args, admin=admin, **kwargs)
+
+            def admin_required(subself, *args, **kwargs):
+                return subself.mgr.admin_required(*args, **kwargs)
+
+        return _BoundToken(self)
+
     # --- Blueprint / App Mounting -------------------------------------------
+
+    def init_app(self, app: Flask) -> "TokenAuthManager":
+        """Initialize TokenAuthManager with a Flask application."""
+        if not hasattr(app, "extensions"):
+            app.extensions = {}
+        app.extensions["token_auth"] = self
+        app.extensions.setdefault("auth", self)
+        if self.auto_mount:
+            self.mount(app)
+        return self
 
     def mount(self, app_or_blueprint: Union[Flask, Blueprint]) -> None:
         """Mount standard authentication routes (/login, /refresh, /me, /logout)."""
+        if hasattr(app_or_blueprint, "extensions"):
+            app_or_blueprint.extensions["token_auth"] = self
+            app_or_blueprint.extensions.setdefault("auth", self)
         if self._mounted:
             return
         self._mounted = True
@@ -480,3 +615,11 @@ class TokenAuthManager:
             view_func=self.token_required(self.handle_me),
             methods=["GET"],
         )
+
+
+__all__ = [
+    "TokenAuthManager",
+    "TokenUserMixin",
+    "UserModelMixin",
+    "get_token_auth_manager",
+]
