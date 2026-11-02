@@ -314,5 +314,50 @@ def restock(self, instance, data=None):
 
 All `ApiError` exceptions (such as `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ValidationErrorResponse`) raised anywhere in your app or custom routes are automatically caught and formatted via `register_error_handlers(app)`.
 
+### 3. Config-Driven OpenAPI Specification (`app.config`)
+
+You can declare all OpenAPI metadata and auto-mount behavior directly within your Flask application's `app.config` without passing arguments in Python code:
+
+```python
+app = Flask(__name__)
+
+# Declare documentation metadata via Flask config
+app.config["API_TITLE"] = "AutoParts Pro REST API"
+app.config["API_VERSION"] = "2.1.0"
+app.config["API_DESCRIPTION"] = "Full-featured auto parts catalog, cart, checkout, and inventory API."
+app.config["API_URL"] = "https://api.buyautoparts.com/v1"  # Or list of servers
+app.config["API_LICENSE"] = {"name": "MIT", "url": "https://opensource.org/licenses/MIT"}
+app.config["API_TERMS_OF_SERVICE"] = "https://buyautoparts.com/terms"
+app.config["API_CONTACT"] = {"name": "API Support", "email": "api@buyautoparts.com"}
+
+# Configure API Key Security Scheme in Swagger UI
+app.config["API_KEY"] = "X-API-KEY"       # Injects apiKeyAuth security scheme
+app.config["API_KEY_NAME"] = "X-API-KEY"  # Header/Query param name
+app.config["API_KEY_IN"] = "header"       # 'header' (default), 'query', or 'cookie'
+
+# Auto-mount Swagger UI & OpenAPI JSON directly on init
+app.config["API_DOCS_ENABLED"] = True     # Or app.config["API_DOCS"] = "/api-docs"
+app.config["API_DOCS_URL"] = "/api-docs"  # Swagger UI endpoint (default: /docs)
+
+api = Api(app)  # Reads all metadata and mounts Swagger automatically!
+```
+
+#### Supported Configuration Keys
+
+| Config Key | OpenAPI Field | Description / Example |
+|---|---|---|
+| `API_TITLE` / `OPENAPI_TITLE` | `info.title` | Title of your API (defaults to `"API Documentation"`). |
+| `API_VERSION` / `OPENAPI_VERSION` | `info.version` | Version string (defaults to `"1.0.0"`). |
+| `API_DESCRIPTION` / `OPENAPI_DESCRIPTION` | `info.description` | Markdown description displayed at the top of Swagger UI. |
+| `API_URL` / `API_SERVERS` | `servers` | Base URL string (e.g. `"https://api.example.com"`) or list of server objects (`[{"url": "...", "description": "..."}]`). |
+| `API_LICENSE` / `OPENAPI_LICENSE` | `info.license` | License name (e.g. `"MIT"`) or dict (`{"name": "Apache 2.0", "url": "..."}`). |
+| `API_KEY` / `API_KEY_NAME` | `components.securitySchemes.apiKeyAuth` | Enables API Key authentication scheme with specified header/query name. |
+| `API_KEY_IN` | `components.securitySchemes.apiKeyAuth.in` | Location of API key: `"header"` (default), `"query"`, or `"cookie"`. |
+| `API_TERMS_OF_SERVICE` | `info.termsOfService` | URL pointing to terms of service. |
+| `API_CONTACT` | `info.contact` | Contact name string or dictionary (`{"name": "...", "email": "...", "url": "..."}`). |
+| `API_DOCS_ENABLED` / `API_DOCS` | N/A | Boolean `True` or string path (e.g. `"/docs"`) to automatically mount Swagger UI. |
+| `API_DOCS_URL` | N/A | URL prefix for the Swagger UI documentation (defaults to `"/docs"`). |
+
+
 
 

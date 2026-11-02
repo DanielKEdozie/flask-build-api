@@ -57,6 +57,11 @@ class Api:
         self.target = app_or_blueprint
         if hasattr(app_or_blueprint, "extensions"):
             app_or_blueprint.extensions["build_api"] = self
+
+        cfg = getattr(app_or_blueprint, "config", {})
+        if not cfg and hasattr(app_or_blueprint, "app"):
+            cfg = getattr(app_or_blueprint.app, "config", {})
+
         if self.register_errors:
             from .errors import register_error_handlers
             register_error_handlers(app_or_blueprint)
@@ -65,9 +70,25 @@ class Api:
                 self.auth.backend.mount(app_or_blueprint)
         elif self.auth and hasattr(self.auth, "mount") and getattr(self.auth, "auto_mount", True):
             self.auth.mount(app_or_blueprint)
-        if self.docs:
-            url = self.docs if isinstance(self.docs, str) else self.docs_url
-            self.mount_docs(url_prefix=url, title=self.docs_title)
+
+        # Docs auto-activation via config or self.docs
+        docs_config = cfg.get("API_DOCS") if cfg.get("API_DOCS") is not None else (
+            cfg.get("API_DOCS_ENABLED") or cfg.get("OPENAPI_ENABLED")
+        )
+        should_mount_docs = bool(self.docs or docs_config)
+
+        if should_mount_docs:
+            url = (
+                self.docs
+                if isinstance(self.docs, str)
+                else (
+                    docs_config
+                    if isinstance(docs_config, str)
+                    else (cfg.get("API_DOCS_URL") or self.docs_url)
+                )
+            )
+            title = cfg.get("API_TITLE") or self.docs_title
+            self.mount_docs(url_prefix=url, title=title)
 
     def create_auth(self, **kwargs) -> TokenAuthManager:
         """Create and attach a native TokenAuthManager with HttpOnly cookie refresh."""
@@ -695,7 +716,19 @@ class Api:
             raise RuntimeError("Api instance is not attached to a Flask app or Blueprint.")
         self.target.add_url_rule(rule, endpoint, view_func, methods=methods)
 
-    def mount_docs(self, url_prefix: str = "/docs", title: str = "API Documentation") -> None:
+    def mount_docs(
+        self,
+        url_prefix: Optional[str] = None,
+        title: Optional[str] = None,
+        version: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> None:
         """Mount OpenAPI JSON and Swagger UI endpoints."""
         from .docs import mount_swagger_docs
-        mount_swagger_docs(self, url_prefix=url_prefix, title=title)
+        mount_swagger_docs(
+            self,
+            url_prefix=url_prefix or self.docs_url,
+            title=title or self.docs_title,
+            version=version,
+            description=description,
+        )
