@@ -11,7 +11,7 @@ from .errors import ApiError, NotFoundError, PreconditionFailedError, format_err
 from .idempotency import IdempotencyStore, MemoryIdempotencyStore
 from .query import apply_filters, apply_search, apply_sorting, paginate_query
 from .schema import SchemaResolver
-from .utils import cast_identifier, is_type_match, normalize_action
+from .utils import cast_identifier, is_type_match, normalize_action, resolve_deprecated_alias
 
 
 class ApiMixin:
@@ -39,8 +39,13 @@ class ApiMixin:
     # Nested Sub-resource Attributes
     is_nested: bool = False
     parent_resource: Any = None
+    parent_fk_field: Optional[str] = None
+    parent_url_param: str = "parent_id"
+    resolve_parent: Optional[Union[Callable[[Any], Any], Dict[str, Callable[[Any], Any]]]] = None
+
+    # Deprecated aliases (kept for backwards compatibility)
     parent_pk_field: Optional[str] = None
-    parent_param: str = "parent_id"
+    parent_param: Optional[str] = None
     resolve_parent_pk: Optional[Union[Callable[[Any], Any], Dict[str, Callable[[Any], Any]]]] = None
 
     # Supported Actions
@@ -109,11 +114,33 @@ class ApiMixin:
         model: Any,
         schema: Optional[Any] = None,
         name: str = "",
+        parent_fk_field: Optional[str] = None,
+        parent_url_param: Optional[str] = None,
+        resolve_parent: Optional[Union[Callable, Dict[str, Callable]]] = None,
+        *,
         parent_pk_field: Optional[str] = None,
+        parent_param: Optional[str] = None,
         resolve_parent_pk: Optional[Union[Callable, Dict[str, Callable]]] = None,
         **kwargs
     ) -> "ApiMixin":
-        """Mount a child subresource directly under this resource."""
+        """Mount a child subresource directly under this resource.
+
+        ``parent_fk_field`` is the foreign-key column on the child model,
+        ``parent_url_param`` is the URL variable carrying the parent id, and
+        ``resolve_parent`` optionally resolves the parent instance.
+
+        The older names ``parent_pk_field``, ``parent_param`` and
+        ``resolve_parent_pk`` remain supported as deprecated aliases.
+        """
+        parent_fk_field = resolve_deprecated_alias(
+            "parent_fk_field", parent_fk_field, "parent_pk_field", parent_pk_field
+        )
+        parent_url_param = resolve_deprecated_alias(
+            "parent_url_param", parent_url_param, "parent_param", parent_param
+        )
+        resolve_parent = resolve_deprecated_alias(
+            "resolve_parent", resolve_parent, "resolve_parent_pk", resolve_parent_pk
+        )
         if self.api is None:
             raise RuntimeError("Cannot create nested resource on an unregistered ApiMixin instance.")
         return self.api.create_nested_resource(
@@ -121,8 +148,9 @@ class ApiMixin:
             model=model,
             schema=schema,
             name=name,
-            parent_pk_field=parent_pk_field,
-            resolve_parent_pk=resolve_parent_pk,
+            parent_fk_field=parent_fk_field,
+            parent_url_param=parent_url_param,
+            resolve_parent=resolve_parent,
             **kwargs
         )
 
@@ -131,7 +159,12 @@ class ApiMixin:
         model: Any,
         schema: Optional[Any] = None,
         name: str = "",
+        parent_fk_field: Optional[str] = None,
+        parent_url_param: Optional[str] = None,
+        resolve_parent: Optional[Union[Callable, Dict[str, Callable]]] = None,
+        *,
         parent_pk_field: Optional[str] = None,
+        parent_param: Optional[str] = None,
         resolve_parent_pk: Optional[Union[Callable, Dict[str, Callable]]] = None,
         **kwargs
     ) -> "ApiMixin":
@@ -140,33 +173,46 @@ class ApiMixin:
             model=model,
             schema=schema,
             name=name,
+            parent_fk_field=parent_fk_field,
+            parent_url_param=parent_url_param,
+            resolve_parent=resolve_parent,
             parent_pk_field=parent_pk_field,
+            parent_param=parent_param,
             resolve_parent_pk=resolve_parent_pk,
             **kwargs
         )
 
+    def _normalize_nested_aliases(self) -> None:
+        """Copy deprecated nested-resource attributes to their new names."""
+        if self.parent_fk_field is None and self.parent_pk_field is not None:
+            self.parent_fk_field = self.parent_pk_field
+        if self.parent_url_param == "parent_id" and self.parent_param:
+            self.parent_url_param = self.parent_param
+        if self.resolve_parent is None and self.resolve_parent_pk is not None:
+            self.resolve_parent = self.resolve_parent_pk
+
     # --- Parent Instance Resolution -----------------------------------------
 
     def get_parent_object(self, parent_id: Optional[Any] = None) -> Optional[Any]:
-        """Resolve the parent model instance using resolve_parent_pk or parent_resource."""
+        """Resolve the parent model instance using resolve_parent or parent_resource."""
         if parent_id is None or not self.is_nested:
             return None
 
-        if self.resolve_parent_pk is not None:
-            if callable(self.resolve_parent_pk):
-                parent = self.resolve_parent_pk(parent_id)
-            elif isinstance(self.resolve_parent_pk, dict):
+        if self.resolve_parent is not None:
+            if callable(self.resolve_parent):
+                parent = self.resolve_parent(parent_id)
+            elif isinstance(self.resolve_parent, dict):
                 resolver = (
-                    self.resolve_parent_pk.get(self.parent_param)
-                    or self.resolve_parent_pk.get(self.parent_pk_field)
-                    or next(iter(self.resolve_parent_pk.values()), None)
+                    self.resolve_parent.get(self.parent_url_param)
+                    or self.resolve_parent.get(self.parent_fk_field)
+                    or next(iter(self.resolve_parent.values()), None)
                 )
                 parent = resolver(parent_id) if callable(resolver) else None
             else:
                 parent = None
 
             if parent is None:
-                raise NotFoundError(f"Parent resource ({self.parent_param}) not found")
+                raise NotFoundError(f"Parent resource ({self.parent_url_param}) not found")
             return parent
 
         if self.parent_resource is not None and hasattr(self.parent_resource, "get_object"):
@@ -291,8 +337,8 @@ class ApiMixin:
         if self.soft_delete and hasattr(self.model, self.soft_delete_field):
             query = query.filter(getattr(self.model, self.soft_delete_field) == False)
 
-        if self.is_nested and parent_id is not None and self.parent_pk_field:
-            col = getattr(self.model, self.parent_pk_field, None)
+        if self.is_nested and parent_id is not None and self.parent_fk_field:
+            col = getattr(self.model, self.parent_fk_field, None)
             if col is not None:
                 target_val = getattr(parent, "id", parent_id) if parent else parent_id
                 query = query.filter(col == target_val)
@@ -314,7 +360,7 @@ class ApiMixin:
         if self.singleton:
             if self.resolve_singleton is not None and callable(self.resolve_singleton):
                 instance = self.resolve_singleton(ctx)
-            elif self.is_nested and parent_id is not None and self.parent_pk_field:
+            elif self.is_nested and parent_id is not None and self.parent_fk_field:
                 instance = query.first()
             elif self.singleton_pk is not None:
                 col = getattr(self.model, self.pk_field, None)
@@ -425,6 +471,37 @@ class ApiMixin:
         """Hook to apply custom query filters or augmentations for collection queries."""
         return query
 
+    def _inject_parent_fk(
+        self,
+        data: Dict[str, Any],
+        parent_id: Optional[Any] = None,
+        parent: Optional[Any] = None,
+        action: str = "create",
+    ) -> Dict[str, Any]:
+        """Add the parent FK to a create payload when the load schema accepts it.
+
+        The FK is also forced onto the instance after loading, so this only
+        needs to populate the payload when the schema actually loads the field.
+        ``dump_only`` fields must be skipped because Marshmallow rejects them
+        as unknown input.
+        """
+        if not (self.is_nested and parent_id is not None and self.parent_fk_field):
+            return data
+        if self.parent_fk_field in data:
+            return data
+
+        field = None
+        try:
+            schema = self.schema_resolver.resolve(action=action, mode="load")
+            if schema is not None:
+                field = schema.fields.get(self.parent_fk_field)
+        except Exception:
+            field = None
+
+        if field is not None and not getattr(field, "dump_only", False):
+            data[self.parent_fk_field] = getattr(parent, "id", parent_id) if parent else parent_id
+        return data
+
     # --- CRUD Actions --------------------------------------------------------
 
     def list(self, parent_id: Optional[Any] = None) -> Any:
@@ -495,10 +572,7 @@ class ApiMixin:
                 return jsonify(cached_body), cached_status, cached_headers
 
         raw_data = request.get_json(silent=True) or {}
-        if self.is_nested and parent_id is not None and self.parent_pk_field:
-            target_val = getattr(parent, "id", parent_id) if parent else parent_id
-            if self.parent_pk_field not in raw_data:
-                raw_data[self.parent_pk_field] = target_val
+        raw_data = self._inject_parent_fk(raw_data, parent_id, parent)
 
         raw_data = self._call_hook("before_create_load", raw_data, ctx=ctx)
 
@@ -508,9 +582,9 @@ class ApiMixin:
         instance = loaded if isinstance(loaded, self.model) else self.model(**loaded)
         ctx.instance = instance
 
-        if self.is_nested and parent_id is not None and self.parent_pk_field:
+        if self.is_nested and parent_id is not None and self.parent_fk_field:
             target_val = getattr(parent, "id", parent_id) if parent else parent_id
-            setattr(instance, self.parent_pk_field, target_val)
+            setattr(instance, self.parent_fk_field, target_val)
 
         session = self.get_session()
         try:
@@ -635,9 +709,9 @@ class ApiMixin:
                 loaded = self.load(item_data, action="bulk_create")
                 loaded = self._call_hook("after_create_load", loaded, ctx=ctx)
                 inst = loaded if isinstance(loaded, self.model) else self.model(**loaded)
-                if self.is_nested and parent_id is not None and self.parent_pk_field:
+                if self.is_nested and parent_id is not None and self.parent_fk_field:
                     target_val = getattr(parent, "id", parent_id) if parent else parent_id
-                    setattr(inst, self.parent_pk_field, target_val)
+                    setattr(inst, self.parent_fk_field, target_val)
                 self._call_hook("before_create", inst, ctx=ctx)
                 session.add(inst)
                 created_instances.append(inst)

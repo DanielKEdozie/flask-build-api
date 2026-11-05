@@ -78,10 +78,16 @@ order_api = user_api.create_resource(
     model=Order,
     schema=OrderSchema,
     name="orders",
-    parent_pk_field="user_id", # Foreign key on Order
+    parent_fk_field="user_id", # Foreign key on Order
     # Optional custom parent lookup resolver:
-    resolve_parent_pk={"user_id": lambda uid: db.session.get(User, uid)},
+    resolve_parent={"user_id": lambda uid: db.session.get(User, uid)},
 )
+
+# Nested-resource naming:
+#   parent_fk_field   -> FK column on the CHILD (auto-detected when omitted)
+#   parent_url_param  -> URL variable name (defaults to the FK name, e.g. "user_id")
+#   resolve_parent    -> optional callable/dict resolving the parent object
+# Deprecated aliases parent_pk_field, parent_param and resolve_parent_pk still work.
 
 # Approach 4: Singleton Resources (Standalone & Nested 1-to-1)
 # Standalone: Mounts /api/settings (GET, POST, PUT, PATCH, DELETE) without {id}
@@ -99,7 +105,7 @@ profile_api = user_api.create_resource(
     schema=ProfileSchema,
     name="profile",
     singleton=True,
-    parent_pk_field="user_id",
+    parent_fk_field="user_id",
 )
 
 # Approach 5: Auto-SQLAlchemy Marshmallow Schemas

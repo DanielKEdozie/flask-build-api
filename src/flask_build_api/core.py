@@ -12,7 +12,7 @@ from .errors import ApiError, ValidationErrorResponse, format_error_response
 from .mixin import ApiMixin
 from .plugins import PluginRegistry, default_registry
 from .token_auth import TokenAuthManager
-from .utils import normalize_action
+from .utils import normalize_action, resolve_deprecated_alias
 
 
 class Api:
@@ -279,32 +279,68 @@ class Api:
         model: Any,
         schema: Optional[Any] = None,
         name: str = "",
+        parent_fk_field: Optional[str] = None,
+        parent_url_param: Optional[str] = None,
+        resolve_parent: Optional[Union[Callable, Dict[str, Callable]]] = None,
+        *,
         parent_pk_field: Optional[str] = None,
         parent_param: Optional[str] = None,
+        resolve_parent_pk: Optional[Union[Callable, Dict[str, Callable]]] = None,
         **kwargs
     ) -> ApiMixin:
         """Mount a nested child sub-resource under a parent resource.
-        
+
+        Parameters
+        ----------
+        parent:
+            The parent resource instance, class, or registered resource name.
+        model:
+            The child SQLAlchemy model.
+        parent_fk_field:
+            Foreign-key column on the CHILD model that references the parent
+            (e.g. ``"user_id"``). Auto-detected from the child's foreign keys
+            when omitted.
+        parent_url_param:
+            Name of the URL variable carrying the parent identifier.
+            Defaults to ``parent_fk_field`` when known, otherwise
+            ``"<parent_name>_id"``.
+        resolve_parent:
+            Optional callable or dict of callables used to resolve the parent
+            instance from the URL identifier. Defaults to the parent
+            resource's own lookup.
+
         Example:
             api.create_nested_resource(
                 parent=user_api,
                 model=Order,
                 schema=OrderSchema,
                 name="orders",
-                parent_pk_field="user_id"
+                parent_fk_field="user_id"
             )
             # Mounts /users/<user_id>/orders and /users/<user_id>/orders/<order_id>
+
+        The previous names ``parent_pk_field``, ``parent_param`` and
+        ``resolve_parent_pk`` remain supported as deprecated aliases.
         """
+        parent_fk_field = resolve_deprecated_alias(
+            "parent_fk_field", parent_fk_field, "parent_pk_field", parent_pk_field
+        )
+        parent_url_param = resolve_deprecated_alias(
+            "parent_url_param", parent_url_param, "parent_param", parent_param
+        )
+        resolve_parent = resolve_deprecated_alias(
+            "resolve_parent", resolve_parent, "resolve_parent_pk", resolve_parent_pk
+        )
+
         parent_res = self.resources.get(parent) if isinstance(parent, str) else parent
         if parent_res is None:
             raise ValueError(f"Parent resource '{parent}' not found or not yet registered.")
 
         parent_name = parent_res.name
-        parent_param_name = parent_param or f"{parent_name}_id"
         resource_name = name or (model.__tablename__ if hasattr(model, "__tablename__") else model.__name__.lower())
 
         # Auto-detect parent foreign key on child model if not explicitly given
-        resolved_fk = parent_pk_field
+        resolved_fk = parent_fk_field
         if not resolved_fk and hasattr(model, "__table__") and hasattr(parent_res.model, "__tablename__"):
             parent_table = parent_res.model.__tablename__
             for col in model.__table__.columns:
@@ -315,9 +351,11 @@ class Api:
                 if resolved_fk:
                     break
 
+        parent_url_param_name = parent_url_param or resolved_fk or f"{parent_name}_id"
+
         parent_converter = "string" if (parent_res.fallback_pk or parent_res.pk_type == "string") else parent_res.pk_type
         parent_base = f"{self.prefix}/{parent_name}" if self.prefix else f"/{parent_name}"
-        nested_prefix = f"{parent_base}/<{parent_converter}:{parent_param_name}>/{resource_name}"
+        nested_prefix = f"{parent_base}/<{parent_converter}:{parent_url_param_name}>/{resource_name}"
 
         return self.create_resource(
             model=model,
@@ -326,8 +364,9 @@ class Api:
             url_prefix=nested_prefix,
             is_nested=True,
             parent_resource=parent_res,
-            parent_pk_field=resolved_fk or f"{parent_name}_id",
-            parent_param=parent_param_name,
+            parent_fk_field=resolved_fk or f"{parent_name}_id",
+            parent_url_param=parent_url_param_name,
+            resolve_parent=resolve_parent,
             **kwargs,
         )
 
@@ -346,6 +385,7 @@ class Api:
             instance = resource_or_cls
 
         instance.api = self
+        instance._normalize_nested_aliases()
         name = instance.name or (
             instance.model.__tablename__
             if hasattr(instance.model, "__tablename__")
@@ -460,7 +500,7 @@ class Api:
                         accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
 
                         def detail_handler(identifier=None, **kw):
-                            parent_id = kw.get("parent_id") or (kw.get(instance.parent_param) if instance.is_nested else None)
+                            parent_id = kw.get("parent_id") or (kw.get(instance.parent_url_param) if instance.is_nested else None)
                             parent = instance.get_parent_object(parent_id) if instance.is_nested else None
 
                             # Load & validate data
@@ -556,7 +596,7 @@ class Api:
                         accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
 
                         def collection_handler(**kw):
-                            parent_id = kw.get("parent_id") or (kw.get(instance.parent_param) if instance.is_nested else None)
+                            parent_id = kw.get("parent_id") or (kw.get(instance.parent_url_param) if instance.is_nested else None)
                             parent = instance.get_parent_object(parent_id) if instance.is_nested else None
 
                             # Load & validate data
@@ -649,8 +689,8 @@ class Api:
             req_id = request.headers.get("X-Request-ID")
             try:
                 # If nested, pass parent_id to handler
-                if instance.is_nested and instance.parent_param in kwargs:
-                    parent_id = kwargs.pop(instance.parent_param)
+                if instance.is_nested and instance.parent_url_param in kwargs:
+                    parent_id = kwargs.pop(instance.parent_url_param)
                     kwargs["parent_id"] = parent_id
 
                 # Auth enforcement if auth_required or action in auth_actions

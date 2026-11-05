@@ -365,6 +365,35 @@ class TestFlaskBuildApi(unittest.TestCase):
         self.assertIn("before_delete", hook_tracker)
         self.assertIn("after_delete", hook_tracker)
 
+    def test_nested_legacy_aliases(self):
+        api_bp = Blueprint("api_nested_legacy", __name__, url_prefix="/legacy")
+        api = Api(api_bp)
+        user_api = api.create_resource(model=User, schema=UserSchema, name="users")
+
+        with self.assertWarns(DeprecationWarning):
+            order_api = user_api.create_resource(
+                model=Order,
+                schema=OrderSchema,
+                name="orders",
+                parent_pk_field="user_id",
+                resolve_parent_pk={"user_id": lambda uid: db.session.get(User, int(uid))},
+            )
+
+        self.assertEqual(order_api.parent_fk_field, "user_id")
+        self.assertEqual(order_api.parent_url_param, "user_id")
+        self.assertIsNotNone(order_api.resolve_parent)
+
+        self.app.register_blueprint(api_bp)
+        client = self.app.test_client()
+
+        res = client.get("/legacy/users/1/orders")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.get_json()["data"]), 1)
+
+        res = client.post("/legacy/users/1/orders", json={"total": 42.0})
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.get_json()["data"]["user_id"], 1)
+
     def test_create_nested_resource(self):
         api_bp = Blueprint("api_nested", __name__, url_prefix="/nested")
         api = Api(api_bp)
@@ -377,8 +406,8 @@ class TestFlaskBuildApi(unittest.TestCase):
             model = Order
             schema = OrderSchema
             name = "orders"
-            parent_pk_field = "user_id"
-            resolve_parent_pk = {"user_id": lambda uid: db.session.get(User, int(uid))}
+            parent_fk_field = "user_id"
+            resolve_parent = {"user_id": lambda uid: db.session.get(User, int(uid))}
 
             def before_create_load(self, data, ctx=None):
                 if ctx and ctx.parent:
@@ -394,8 +423,8 @@ class TestFlaskBuildApi(unittest.TestCase):
             model=Order,
             schema=OrderSchema,
             name="orders",
-            parent_pk_field="user_id",
-            resolve_parent_pk={"user_id": lambda uid: db.session.get(User, int(uid))},
+            parent_fk_field="user_id",
+            resolve_parent={"user_id": lambda uid: db.session.get(User, int(uid))},
             before_create_load=lambda data, ctx=None: parent_captured.append(ctx.parent.name) or data if (ctx and ctx.parent) else data,
         )
 
@@ -480,8 +509,8 @@ class TestFlaskBuildApi(unittest.TestCase):
             schema=ProfileSchema,
             name="profile",
             singleton=True,
-            parent_pk_field="user_id",
-            resolve_parent_pk={"user_id": lambda uid: db.session.get(User, int(uid))},
+            parent_fk_field="user_id",
+            resolve_parent={"user_id": lambda uid: db.session.get(User, int(uid))},
         )
 
         # Register both blueprints before client makes requests

@@ -78,63 +78,63 @@ api.extend("auth", auth_mgr)
 # --- Namespaced flask_build_api.token routes ---
 @app.route("/api/test-token")
 @namespaced_token_required
-def test_namespaced_token_view():
+def view_namespaced_token():
     return {"status": "ok", "user": namespaced_current_user.email}
 
 @app.route("/api/test-login-alias")
 @namespaced_login_required
-def test_namespaced_login_view():
+def view_namespaced_login():
     return {"status": "ok", "user": namespaced_current_user.email}
 
 @app.route("/api/test-admin")
 @namespaced_admin_required
-def test_namespaced_admin_view():
+def view_namespaced_admin():
     return {"status": "admin_ok", "user": namespaced_current_user.email}
 
 # --- Bound auth_mgr.token routes ---
 @app.route("/api/bound-mgr-token")
 @auth_mgr.token.token_required
-def test_bound_mgr_view():
+def view_bound_mgr_token():
     return {"status": "bound_mgr_ok", "user": auth_mgr.token.current_user.email}
 
 @app.route("/api/bound-mgr-admin")
 @auth_mgr.token.admin_required
-def test_bound_mgr_admin_view():
+def view_bound_mgr_admin():
     return {"status": "bound_admin_ok", "user": auth_mgr.token.current_user.email}
 
 # --- Bound global auth.token proxy routes ---
 @app.route("/api/proxy-token")
 @auth.token.token_required
-def test_proxy_token_view():
+def view_proxy_token():
     return {"status": "proxy_ok", "user": auth.token.current_user.email}
 
 # --- Top-level export routes ---
 @app.route("/api/top-token")
 @top_token_required
-def test_top_token_view():
+def view_top_token():
     return {"status": "top_ok", "user": top_current_user.email}
 
 # --- Namespaced flask_build_api.security routes ---
 @app.route("/api/security-token")
 @security_token_required
-def test_security_token_view():
+def view_security_token():
     return {"status": "security_ok", "user": security_current_user.email}
 
 @app.route("/api/security-admin")
 @security_admin_required
-def test_security_admin_view():
+def view_security_admin():
     return {"status": "security_admin_ok", "user": security_current_user.email}
 
 # --- Bound auth_mgr.security routes ---
 @app.route("/api/bound-mgr-security")
 @auth_mgr.security.token_required
-def test_bound_mgr_security():
+def view_bound_mgr_security():
     return {"status": "bound_security_ok", "user": auth_mgr.security.current_user.email}
 
 # --- Bound auth.security proxy routes ---
 @app.route("/api/proxy-security")
 @auth.security.token_required
-def test_proxy_security():
+def view_proxy_security():
     return {"status": "proxy_security_ok", "user": auth.security.current_user.email}
 
 

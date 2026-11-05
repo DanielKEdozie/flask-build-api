@@ -1,5 +1,28 @@
 import uuid
+import warnings
 from typing import Any, Tuple
+
+
+def resolve_deprecated_alias(
+    new_name: str,
+    new_value: Any,
+    legacy_name: str,
+    legacy_value: Any,
+) -> Any:
+    """Return the new argument value, falling back to a deprecated alias.
+
+    Emits a ``DeprecationWarning`` when the legacy name is used. When both
+    are supplied, the new name wins.
+    """
+    if legacy_value is not None:
+        warnings.warn(
+            f"'{legacy_name}' is deprecated; use '{new_name}' instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        if new_value is None:
+            return legacy_value
+    return new_value
 
 
 ACTION_ALIASES = {
