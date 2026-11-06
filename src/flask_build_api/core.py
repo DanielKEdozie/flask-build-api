@@ -1,18 +1,22 @@
+from __future__ import annotations
+
 import inspect
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, Union
 from flask import Blueprint, Flask, Response, current_app, jsonify, request
 from marshmallow import ValidationError
 from werkzeug.exceptions import HTTPException
 import sqlalchemy as sa
 
-from .auth import ApiAuth
 from .auto_schema import SchemaMixin, create_schema
 from .errors import ApiError, ValidationErrorResponse, format_error_response
 from .mixin import ApiMixin
 from .plugins import PluginRegistry, default_registry
-from .token_auth import TokenAuthManager
 from .utils import normalize_action, resolve_deprecated_alias
+
+if TYPE_CHECKING:
+    from .api_auth import ApiAuth
+    from .token_auth import TokenAuthManager
 
 
 class Api:
@@ -92,6 +96,8 @@ class Api:
 
     def create_auth(self, **kwargs) -> TokenAuthManager:
         """Create and attach a native TokenAuthManager with HttpOnly cookie refresh."""
+        from .token_auth import TokenAuthManager
+
         mgr = TokenAuthManager(**kwargs)
         self.configure_auth(mgr)
         if self.target and mgr.auto_mount:
@@ -157,6 +163,8 @@ class Api:
 
     def configure_auth(self, auth_instance: Any) -> None:
         """Attach authentication manager (ApiAuth or flask-user-auth)."""
+        from .api_auth import ApiAuth
+
         if isinstance(auth_instance, ApiAuth):
             self.auth = auth_instance
         else:

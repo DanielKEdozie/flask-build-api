@@ -184,6 +184,8 @@ All hooks use clean, streamlined signatures. Contextual data such as `parent`, `
 
 `flask-build-api` includes built-in JWT + HttpOnly refresh cookie authentication designed for modern single-page apps, mobile clients, and REST APIs.
 
+This is an optional extra. Install it with `pip install "flask-build-api[auth]"`. The auth modules are lazy-loaded, so `import flask_build_api` does not require `pyjwt` or `flask-httpauth` unless you actually use the auth suite.
+
 ### 1. `UserModelMixin` / `TokenUserMixin`
 
 Add password hashing, verification, and serialization exclusion to your User model with zero boilerplate:

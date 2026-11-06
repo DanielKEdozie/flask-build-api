@@ -1,7 +1,8 @@
 """flask-build-api: Declarative CRUD REST API builder for Flask."""
 
+import importlib
+
 from marshmallow import fields
-from .auth import ApiAuth
 from .auto_schema import SchemaMixin, create_schema
 from .conditional import generate_etag, match_etag
 from .context import ApiContext
@@ -36,20 +37,41 @@ from .plugins import (
     tasks,
 )
 from .schema import SchemaResolver
-from . import security
-from . import token
-from .security import (
-    TokenUserMixin,
-    UserModelMixin,
-    admin_required,
-    current_user,
-    login_required,
-    token_required,
-)
-from .token_auth import TokenAuthManager
 from .utils import ACTION_ALIASES, CANONICAL_ACTIONS, cast_identifier, normalize_action
 
 __version__ = "0.1.0"
+
+# Authentication is optional. These names are imported on first access so that
+# ``import flask_build_api`` does not load token/JWT/HTTPAuth code unless the
+# caller actually uses the auth suite.
+_LAZY_ATTRS = {
+    "ApiAuth": (".api_auth", "ApiAuth"),
+    "TokenAuthManager": (".token_auth", "TokenAuthManager"),
+    "TokenUserMixin": (".security", "TokenUserMixin"),
+    "UserModelMixin": (".security", "UserModelMixin"),
+    "admin_required": (".security", "admin_required"),
+    "current_user": (".security", "current_user"),
+    "login_required": (".security", "login_required"),
+    "token_required": (".security", "token_required"),
+    "security": (".security", None),
+    "token": (".token", None),
+}
+
+
+def __getattr__(name: str):
+    try:
+        module_name, attr = _LAZY_ATTRS[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+
+    module = importlib.import_module(module_name, __name__)
+    value = module if attr is None else getattr(module, attr)
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_LAZY_ATTRS))
 
 __all__ = [
     "Api",
