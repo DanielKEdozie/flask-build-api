@@ -26,19 +26,26 @@ class ApiAuth:
             return None
 
     def get_current_user(self) -> Optional[Any]:
-        """Resolve currently authenticated user from g or flask-user-auth."""
-        if hasattr(g, "current_user") and g.current_user is not None:
-            return g.current_user
+        """Resolve the authenticated API user from Bearer-token state only.
+
+        Flask-Login sessions are deliberately ignored: API resources use token
+        authentication, while session authentication is reserved for
+        server-rendered/admin routes.
+        """
+        if hasattr(g, "_token_user") and g._token_user is not None:
+            return g._token_user
+        if hasattr(g, "flask_httpauth_user") and g.flask_httpauth_user is not None:
+            return g.flask_httpauth_user
         try:
-            from flask_user_auth import current_user as u_auth_user
-            if u_auth_user and getattr(u_auth_user, "is_authenticated", True):
-                return u_auth_user
+            from flask_user_auth.token import current_user as token_user
+            if getattr(token_user, "is_authenticated", False):
+                return token_user
         except ImportError:
             pass
         return None
 
     def requires_auth(self, refresh: bool = False, admin: bool = False) -> Callable:
-        """Decorator to require a valid authenticated user via token (or session fallback)."""
+        """Decorator requiring a valid Bearer token (never a login session)."""
         def decorator(f: Callable) -> Callable:
             @wraps(f)
             def wrapper(*args, **kwargs):
